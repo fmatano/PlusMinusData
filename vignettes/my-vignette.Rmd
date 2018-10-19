@@ -1,0 +1,151 @@
+---
+title: "PlusMinusData"
+author: "Francesca Matano"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+# Introduction
+Welcome to PlusMinusData!
+
+This vignette will guide you through the basic functionality of the PlusMinusData package. We will first explain how to download play-by-play data from espn.com, by league and season. We will then explain you how to download FIFA ratings for each player, from sofifa.com. Finally we will show you how to link player names between these two different sources of data, and use our interactive record linkage system. 
+
+
+## Donwload the package and other dipendencies
+
+```{r, eval = FALSE}
+devtools::install_github("ryurko/fcscrapR")
+devtools::install_github("fmatano/apm")
+library(magrittr)
+library(fcscrapR)
+library(apm)
+```
+
+```{r, include = FALSE}
+library(magrittr)
+library(fcscrapR)
+devtools::load_all()
+```
+
+## Donwload play-by-play data, for a given game
+
+We first choose league and season
+```{r}
+league_selected <- "english premier league"
+years <- 2017
+```
+
+A list of all possible leagues is given by running 
+```{r, eval = FALSE}
+# install.packages(pander)
+league_url_data %>%
+  head() %>%
+  pander::pander()
+```
+
+
+You can select a date of interest and scrape all the games that occurred that day
+
+```{r}
+
+date_selected <- as.Date("2017-10-14")
+espn_games <- fcscrapR::scrape_scoreboard_ids(scoreboard_name=league_selected, game_date=date_selected)
+espn_games
+```
+You'll notice that there are games that don't belong to the league selected. This happens because espn always displays your current day's games on their page. You need to make sure to select the one game or all the games you are actually interested in, or remember to delete all the current day's games. 
+
+Let's for instance use the match Liverpool - Manchester United. 
+
+We can obtain their data by extracting this game id and plugging the game id into our function. We first extract the game lineup
+
+```{r}
+game_id <- "480831"
+lineup <- scrape_lineup(game_id = game_id)
+lineup
+```
+Then we add minutes, events and red-card info from the commentary data
+
+```{r}
+game_commentary <- fcscrapR::scrape_commentary(game_id = game_id)
+lineup <- add_red_card_info(game_commentary = game_commentary, game_lineup = lineup)
+
+lineup
+```
+Finally we compute the segments of the game and combine all the events that happened in that segment for home and away team respectively
+```{r}
+segmentation_mat <- create_segmentation(game_lineup = lineup)
+segmentation_mat <- get_shot_attempt_by_segment(game_commentary = game_commentary, segmentation_matrix = segmentation_mat)
+
+segmentation_mat[, 1:10]
+```
+
+
+The design matrix can be now created by input lineup and segmentation matrix. Notice that this can handle a dataframe with lineups and segmentation for a series of games
+```{r, eval = FALSE}
+lineup$espn_id <- game_id
+segmentation_mat$espn_id <- game_id
+design_matrix <- create_design_matrix(lineups = lineup, segments = segmentation_mat)
+
+```
+
+
+## Scrape sofifa.com
+The sofifa website display ratings at various point of the season, so you first need to decide which one you want to scrape.
+Suppose you are interested in the fifa ratings at the beginning of the season 2017 then you can pass directly the link from the webpage
+
+```{r}
+sofifa_2007 <- "https://sofifa.com/players?col=oa&sort=desc%3F&e=154818&set=true&v=07"
+
+sotab <- scrape_sofifa_table(url = sofifa_2007)
+sotab_clean <- clean_sofifa_table(tab = sotab)
+
+head(sotab_clean)
+```
+
+## Interactive Record Linkage
+Sofifa doesn't provide information on the league, but only the team the players are in at the beginning of the season. We can now match the players between sofifa and espn by using our interactive record linkage functionality. 
+
+We can either perform an active comparison in which we evaluate our data and the system will 
+ask to provide the match between a list of possible matches 
+```{r, eval = FALSE}
+table_for_active_comparison <- data.frame(espn_name = lineup$lineup, fifa_name = sotab_clean$full_name, fifa_team = sotab_clean$team)
+rows_of_match <- active_comparison(data = table_for_active_comparison)
+```
+
+```{r, echo = FALSE}
+unmatched_names <- data.frame(espn_name = c('David Silva', 'David Silva'), 
+                              espn_team = c('Manchester City', 'Manchester City'),
+                              fifa_name = c('David Silva', 'David Josué Jiménez Silva'),
+                              fifa_team = c('CD Los Millionarios Bogota', 'Manchester City'))
+print("Choose the row you think it's a match. Enter 0 if you think there is no match.")
+print ("If there is a single row shown, you can also enter 'y' for yes.")
+print(unmatched_names)
+print('Which row is a match:')
+```
+
+
+Alternatively, we can enter the match directly, using the active insert following funcionality
+
+```{r, eval = FALSE}
+unmatched_names <- data.frame(espn_name = 'David Silva', team = 'Manchester City', fifa_name = NA)
+fifa_names <- active_insert(data = unmatched_names)
+```
+
+```{r, echo = FALSE}
+unmatched_names <- data.frame(espn_name = 'David Silva', team = 'Manchester City')
+print("Insert the fifa name for the record shown below or NA if uknown.")
+
+print(unmatched_names)
+print('Your answer:')
+```
