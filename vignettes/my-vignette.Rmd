@@ -26,10 +26,10 @@ This vignette will guide you through the basic functionality of the PlusMinusDat
 
 ```{r, eval = FALSE}
 devtools::install_github("ryurko/fcscrapR")
-devtools::install_github("fmatano/apm")
+devtools::install_github("fmatano/PlusMinusData")
 library(magrittr)
 library(fcscrapR)
-library(apm)
+library(PlusMinusData)
 ```
 
 ```{r, include = FALSE}
